@@ -1,0 +1,15 @@
+# Rust
+target/
+
+# Node.js
+node_modules/
+dist/
+*.js.map
+
+# Generated files (don't track binaries)
+*.wav
+*.mp3
+
+# OS
+.DS_Store
+Thumbs.db
