@@ -15,10 +15,36 @@ enum Commands {
         /// Input parameter JSON file
         input: PathBuf,
 
-        /// Output WAV file path
-        #[arg(short, long, default_value = "output.wav")]
-        output: PathBuf,
+        /// Output WAV file path (default: output/<category>/<name>.wav)
+        #[arg(short, long)]
+        output: Option<PathBuf>,
     },
+}
+
+/// JSON からカテゴリと名前を抽出して出力パスを決定する
+fn resolve_output_path(json: &[u8], explicit: Option<PathBuf>) -> PathBuf {
+    if let Some(path) = explicit {
+        return path;
+    }
+
+    // JSON を部分パースして meta.category と meta.name を取得
+    let category;
+    let name;
+    if let Ok(v) = serde_json::from_slice::<serde_json::Value>(json) {
+        category = v["meta"]["category"]
+            .as_str()
+            .unwrap_or("misc")
+            .to_string();
+        name = v["meta"]["name"]
+            .as_str()
+            .unwrap_or("output")
+            .to_string();
+    } else {
+        category = "misc".to_string();
+        name = "output".to_string();
+    }
+
+    PathBuf::from("output").join(&category).join(format!("{}.wav", name))
 }
 
 fn main() {
@@ -34,6 +60,18 @@ fn main() {
                 }
             };
 
+            let out_path = resolve_output_path(&json, output);
+
+            // 出力先ディレクトリが無ければ作成
+            if let Some(parent) = out_path.parent() {
+                if !parent.exists() {
+                    if let Err(e) = std::fs::create_dir_all(parent) {
+                        eprintln!("Error creating directory {}: {}", parent.display(), e);
+                        std::process::exit(1);
+                    }
+                }
+            }
+
             let wav = match sfx_core::generate_wav(&json) {
                 Ok(data) => data,
                 Err(e) => {
@@ -42,16 +80,16 @@ fn main() {
                 }
             };
 
-            match std::fs::write(&output, &wav) {
+            match std::fs::write(&out_path, &wav) {
                 Ok(_) => {
                     println!(
                         "Generated {} ({} bytes)",
-                        output.display(),
+                        out_path.display(),
                         wav.len()
                     );
                 }
                 Err(e) => {
-                    eprintln!("Error writing {}: {}", output.display(), e);
+                    eprintln!("Error writing {}: {}", out_path.display(), e);
                     std::process::exit(1);
                 }
             }
